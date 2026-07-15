@@ -52,6 +52,18 @@ export interface RegistrationInput {
   consentMediaUsage: boolean;
 }
 
+export interface UpdateRegistrationInput {
+  fullName: string;
+  email: string;
+  mobileNumber: string;
+  whatsappNumber: string;
+  gender: Gender;
+  age: number;
+  governorate: string;
+  educationalStage: string;
+  status: RegistrationStatus;
+}
+
 export interface Registration {
   /** Stable row identifier (sheet row number) */
   id: number;
@@ -65,6 +77,10 @@ export interface Registration {
   governorate: string;
   educationalStage: string;
   consentMediaUsage: boolean;
+  /** @nullable */
+  nationalIdFileUrl?: string | null;
+  /** @nullable */
+  birthPaperFileUrl?: string | null;
   status: RegistrationStatus;
   /** @nullable */
   ticketId: string | null;

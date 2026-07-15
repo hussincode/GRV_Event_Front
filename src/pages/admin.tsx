@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,11 +12,12 @@ import {
   useGetRegistrationStats,
   useApproveRegistration,
   useRejectRegistration,
+  useUpdateRegistration,
   getListRegistrationsQueryKey,
   getGetRegistrationStatsQueryKey,
   getGetAdminSessionQueryKey
 } from '@/lib/api-client-react';
-import { type Registration } from '@/lib/api-client-react/src/generated/api.schemas';
+import { type Registration } from '@/lib/api-client-react/generated/api.schemas';
 import { 
   Loader2, 
   RefreshCcw, 
@@ -29,7 +30,12 @@ import {
   QrCode,
   ScanLine,
   Eye,
-  ShieldAlert
+  ShieldAlert,
+  FileText,
+  ExternalLink,
+  Pencil,
+  Save,
+  UserPlus
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -57,10 +63,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const GOVERNORATES = [
+  'Cairo', 'Alexandria', 'Giza', 'Qalyubia', 'Port Said', 'Suez', 'Dakahlia', 'Sharqia',
+  'Gharbia', 'Monufia', 'Beheira', 'Ismailia', 'Faiyum', 'Beni Suef', 'Minya', 'Asyut',
+  'Sohag', 'Qena', 'Aswan', 'Luxor', 'Red Sea', 'New Valley', 'Matrouh', 'North Sinai',
+  'South Sinai', 'Kafr El Sheikh', 'Damietta',
+];
+
+const EDUCATIONAL_STAGES = [
+  'High School', 'University', 'Postgraduate', 'Working Professional', 'Other',
+];
+
+// ── Login schemas ────────────────────────────────────────────────────────────
+
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required'),
 });
+
+// ── Edit schema ──────────────────────────────────────────────────────────────
+
+const editSchema = z.object({
+  fullName: z.string().min(2, 'Full name is required'),
+  email: z.string().email('Valid email is required'),
+  mobileNumber: z.string().min(8, 'Valid mobile number is required'),
+  whatsappNumber: z.string().min(8, 'Valid WhatsApp number is required'),
+  gender: z.enum(['Male', 'Female']),
+  age: z.coerce.number().min(5).max(120),
+  governorate: z.string().min(1, 'Please select a governorate'),
+  educationalStage: z.string().min(1, 'Please select an educational stage'),
+  status: z.enum(['Pending', 'Approved', 'Rejected']),
+});
+
+type EditFormValues = z.infer<typeof editSchema>;
+
+// ── AdminLogin ───────────────────────────────────────────────────────────────
 
 function AdminLogin() {
   const queryClient = useQueryClient();
@@ -86,7 +125,7 @@ function AdminLogin() {
       onError: (error) => {
         toast({ 
           title: 'Login Failed', 
-          description: error.error || 'Invalid credentials', 
+          description: (error as any).error || 'Invalid credentials', 
           variant: 'destructive' 
         });
       }
@@ -148,6 +187,272 @@ function AdminLogin() {
   );
 }
 
+// ── Edit Dialog ──────────────────────────────────────────────────────────────
+
+interface EditDialogProps {
+  registration: Registration | null;
+  onClose: () => void;
+  onSaved: (updated: Registration) => void;
+}
+
+function EditRegistrationDialog({ registration, onClose, onSaved }: EditDialogProps) {
+  const { toast } = useToast();
+  const updateMutation = useUpdateRegistration();
+
+  const form = useForm<EditFormValues>({
+    resolver: zodResolver(editSchema),
+    defaultValues: registration
+      ? {
+          fullName: registration.fullName,
+          email: registration.email,
+          mobileNumber: registration.mobileNumber,
+          whatsappNumber: registration.whatsappNumber,
+          gender: registration.gender as 'Male' | 'Female',
+          age: registration.age,
+          governorate: registration.governorate,
+          educationalStage: registration.educationalStage,
+          status: registration.status as 'Pending' | 'Approved' | 'Rejected',
+        }
+      : undefined,
+  });
+
+  // Reset form whenever the target registration changes
+  React.useEffect(() => {
+    if (registration) {
+      form.reset({
+        fullName: registration.fullName,
+        email: registration.email,
+        mobileNumber: registration.mobileNumber,
+        whatsappNumber: registration.whatsappNumber,
+        gender: registration.gender as 'Male' | 'Female',
+        age: registration.age,
+        governorate: registration.governorate,
+        educationalStage: registration.educationalStage,
+        status: registration.status as 'Pending' | 'Approved' | 'Rejected',
+      });
+    }
+  }, [registration?.id]);
+
+  const onSubmit = (values: EditFormValues) => {
+    if (!registration) return;
+    updateMutation.mutate(
+      { rowId: registration.id, data: values },
+      {
+        onSuccess: (updated) => {
+          toast({ title: 'Registration updated', description: 'Changes saved successfully.' });
+          onSaved(updated);
+        },
+        onError: (err) => {
+          toast({
+            title: 'Error',
+            description: (err as any)?.data?.error || 'Failed to save changes.',
+            variant: 'destructive',
+          });
+        },
+      },
+    );
+  };
+
+  return (
+    <Dialog open={!!registration} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl bg-popover/95 backdrop-blur-xl border-border max-h-[90vh] overflow-y-auto">
+        {registration && (
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-3 pr-8">
+                <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center">
+                  <Pencil className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl font-heading">Edit Registration</DialogTitle>
+                  <DialogDescription>ID #{registration.id} · {registration.fullName}</DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 pt-2">
+                {/* Row 1 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="fullName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl><Input className="bg-input/50" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl><Input type="email" className="bg-input/50" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Row 2 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="mobileNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mobile Number</FormLabel>
+                        <FormControl><Input type="tel" className="bg-input/50" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="whatsappNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>WhatsApp Number</FormLabel>
+                        <FormControl><Input type="tel" className="bg-input/50" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Row 3 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="gender"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Gender</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input/50"><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="age"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Age</FormLabel>
+                        <FormControl><Input type="number" className="bg-input/50" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem className="col-span-2">
+                        <FormLabel>Status</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input/50"><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="Pending">
+                              <span className="flex items-center gap-2"><Clock className="w-3.5 h-3.5 text-amber-500" /> Pending</span>
+                            </SelectItem>
+                            <SelectItem value="Approved">
+                              <span className="flex items-center gap-2"><CheckCircle className="w-3.5 h-3.5 text-green-500" /> Approved</span>
+                            </SelectItem>
+                            <SelectItem value="Rejected">
+                              <span className="flex items-center gap-2"><XCircle className="w-3.5 h-3.5 text-destructive" /> Rejected</span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Row 4 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="governorate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Governorate</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input/50"><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {GOVERNORATES.map(g => (
+                              <SelectItem key={g} value={g}>{g}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="educationalStage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Educational Stage</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="bg-input/50"><SelectValue /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {EDUCATIONAL_STAGES.map(s => (
+                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <DialogFooter className="pt-2 gap-2">
+                  <Button type="button" variant="outline" onClick={onClose} disabled={updateMutation.isPending}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="btn-primary gap-2"
+                    disabled={updateMutation.isPending}
+                  >
+                    {updateMutation.isPending
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+                      : <><Save className="w-4 h-4" /> Save Changes</>}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── AdminDashboardPage ───────────────────────────────────────────────────────
+
 export default function AdminDashboardPage() {
   const { data: session, isLoading: sessionLoading, isError: sessionError } = useGetAdminSession();
   const logoutMutation = useAdminLogout();
@@ -203,6 +508,8 @@ export default function AdminDashboardPage() {
   );
 }
 
+// ── DashboardContent ─────────────────────────────────────────────────────────
+
 function DashboardContent() {
   const queryClient = useQueryClient();
   const { data: stats, isLoading: statsLoading, refetch: refetchStats, isRefetching: statsRefetching } = useGetRegistrationStats();
@@ -211,6 +518,7 @@ function DashboardContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [selectedRow, setSelectedRow] = useState<Registration | null>(null);
+  const [editRow, setEditRow] = useState<Registration | null>(null);
   const [, setLocation] = useLocation();
 
   const approveMutation = useApproveRegistration();
@@ -254,7 +562,7 @@ function DashboardContent() {
         if (selectedRow?.id === rowId) setSelectedRow(null);
       },
       onError: (err) => {
-        toast({ title: 'Error', description: err.error || 'Failed to approve', variant: 'destructive' });
+        toast({ title: 'Error', description: (err as any).error || 'Failed to approve', variant: 'destructive' });
       }
     });
   };
@@ -268,9 +576,18 @@ function DashboardContent() {
         if (selectedRow?.id === rowId) setSelectedRow(null);
       },
       onError: (err) => {
-        toast({ title: 'Error', description: err.error || 'Failed to reject', variant: 'destructive' });
+        toast({ title: 'Error', description: (err as any).error || 'Failed to reject', variant: 'destructive' });
       }
     });
+  };
+
+  const handleEditSaved = (updated: Registration) => {
+    // Update the list cache optimistically
+    queryClient.invalidateQueries({ queryKey: getListRegistrationsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetRegistrationStatsQueryKey() });
+    setEditRow(null);
+    // If the detail dialog was open for this row, refresh it
+    if (selectedRow?.id === updated.id) setSelectedRow(updated);
   };
 
   const StatusBadge = ({ status }: { status: string }) => {
@@ -288,6 +605,7 @@ function DashboardContent() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-3xl font-heading font-bold text-foreground">Dashboard</h2>
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
@@ -297,6 +615,14 @@ function DashboardContent() {
           >
             <ScanLine className="w-4 h-4 mr-2" />
             Check-in
+          </Button>
+          <Button
+            onClick={() => setLocation('/')}
+            variant="outline"
+            className="w-full sm:w-auto bg-card/50 backdrop-blur-sm border-border hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Add User
           </Button>
           <Button 
             variant="outline" 
@@ -310,6 +636,7 @@ function DashboardContent() {
         </div>
       </div>
 
+      {/* ── Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card className="glass-card">
           <CardContent className="p-6">
@@ -368,6 +695,7 @@ function DashboardContent() {
         </Card>
       </div>
 
+      {/* ── Table ── */}
       <Card className="glass-card overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-border/50 bg-muted/20 flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="relative w-full sm:max-w-xs">
@@ -422,15 +750,27 @@ function DashboardContent() {
                 </TableRow>
               ) : (
                 filteredRegistrations.map((row) => (
-                  <TableRow key={row.id} className="border-border/50 hover:bg-primary/5 transition-colors group cursor-pointer" onClick={() => setSelectedRow(row)}>
+                  <TableRow
+                    key={row.id}
+                    className="border-border/50 hover:bg-primary/5 transition-colors group cursor-pointer"
+                    onClick={() => setSelectedRow(row)}
+                  >
                     <TableCell className="align-top py-4">
                       <p className="font-medium text-foreground">{row.fullName}</p>
                       <p className="text-xs text-muted-foreground mt-1">ID: {row.id}</p>
-                      {row.checkedIn && (
-                         <Badge variant="outline" className="mt-2 bg-primary/10 text-primary border-primary/20 text-[10px]">
-                           Checked in
-                         </Badge>
-                      )}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {row.checkedIn && (
+                          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+                            Checked in
+                          </Badge>
+                        )}
+                        {(row.nationalIdFileUrl || row.birthPaperFileUrl) && (
+                          <Badge variant="outline" className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px] gap-1">
+                            <FileText className="w-2.5 h-2.5" />
+                            Docs
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="align-top py-4">
                       <p className="text-sm">{row.email}</p>
@@ -480,6 +820,17 @@ function DashboardContent() {
                             </Button>
                           </>
                         )}
+                        {/* Edit button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 bg-primary/5 text-primary border-primary/20 hover:bg-primary hover:text-white transition-colors"
+                          onClick={(e) => { e.stopPropagation(); setEditRow(row); }}
+                          title="Edit registration"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        {/* View button */}
                         <Button 
                           size="sm" 
                           variant="ghost" 
@@ -498,6 +849,7 @@ function DashboardContent() {
         </div>
       </Card>
 
+      {/* ── View / Detail Dialog ── */}
       <Dialog open={!!selectedRow} onOpenChange={(open) => !open && setSelectedRow(null)}>
         <DialogContent className="sm:max-w-2xl bg-popover/95 backdrop-blur-xl border-border">
           {selectedRow && (
@@ -574,35 +926,92 @@ function DashboardContent() {
                 </div>
               </div>
 
+              {/* Identity Documents */}
+              {(selectedRow.nationalIdFileUrl || selectedRow.birthPaperFileUrl) && (
+                <div className="py-4 border-b border-border/50">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Identity Documents</h4>
+                  <div className="flex flex-wrap gap-3">
+                    {selectedRow.nationalIdFileUrl && (
+                      <a
+                        href={selectedRow.nationalIdFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/15 hover:bg-primary/10 hover:border-primary/30 transition-colors text-sm font-medium text-primary group"
+                      >
+                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <span>National ID</span>
+                        <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                    )}
+                    {selectedRow.birthPaperFileUrl && (
+                      <a
+                        href={selectedRow.birthPaperFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/15 hover:bg-primary/10 hover:border-primary/30 transition-colors text-sm font-medium text-primary group"
+                      >
+                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <span>Birth Certificate</span>
+                        <ExternalLink className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+              {!selectedRow.nationalIdFileUrl && !selectedRow.birthPaperFileUrl && (
+                <div className="py-4 border-b border-border/50">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Identity Documents</h4>
+                  <p className="text-sm text-muted-foreground italic">No documents uploaded.</p>
+                </div>
+              )}
+
               <DialogFooter className="pt-4 flex sm:justify-between items-center w-full">
                 <p className="text-xs text-muted-foreground">ID: {selectedRow.id}</p>
-                {selectedRow.status === 'Pending' && (
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="outline"
-                      className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive hover:text-white"
-                      onClick={() => handleReject(selectedRow.id)}
-                      disabled={approveMutation.isPending || rejectMutation.isPending}
-                    >
-                      Reject
-                    </Button>
-                    <Button 
-                      className="bg-green-500/10 text-green-500 border border-green-500/20 hover:bg-green-500 hover:text-white"
-                      onClick={() => handleApprove(selectedRow.id)}
-                      disabled={approveMutation.isPending || rejectMutation.isPending}
-                    >
-                      Approve
-                    </Button>
-                  </div>
-                )}
-                {selectedRow.status !== 'Pending' && (
-                  <Button variant="outline" onClick={() => setSelectedRow(null)}>Close</Button>
-                )}
+                <div className="flex gap-2">
+                  {/* Edit from detail dialog */}
+                  <Button
+                    variant="outline"
+                    className="gap-2 bg-primary/5 text-primary border-primary/20 hover:bg-primary hover:text-white"
+                    onClick={() => { setEditRow(selectedRow); setSelectedRow(null); }}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Edit
+                  </Button>
+                  {selectedRow.status === 'Pending' && (
+                    <>
+                      <Button 
+                        variant="outline"
+                        className="bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive hover:text-white"
+                        onClick={() => handleReject(selectedRow.id)}
+                        disabled={approveMutation.isPending || rejectMutation.isPending}
+                      >
+                        Reject
+                      </Button>
+                      <Button 
+                        className="bg-green-500/10 text-green-500 border border-green-500/20 hover:bg-green-500 hover:text-white"
+                        onClick={() => handleApprove(selectedRow.id)}
+                        disabled={approveMutation.isPending || rejectMutation.isPending}
+                      >
+                        Approve
+                      </Button>
+                    </>
+                  )}
+                  {selectedRow.status !== 'Pending' && (
+                    <Button variant="outline" onClick={() => setSelectedRow(null)}>Close</Button>
+                  )}
+                </div>
               </DialogFooter>
             </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* ── Edit Dialog ── */}
+      <EditRegistrationDialog
+        registration={editRow}
+        onClose={() => setEditRow(null)}
+        onSaved={handleEditSaved}
+      />
     </div>
   );
 }

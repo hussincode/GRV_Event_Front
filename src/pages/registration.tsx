@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useRegisterAttendee } from '@/lib/api-client-react';
-import { Check, AlertCircle, Calendar, MapPin, Ticket } from 'lucide-react';
+import { useRegisterAttendeeWithFiles, useRegistrationStatus } from '@/lib/api-client-react';
+import { Check, AlertCircle, Calendar, MapPin, Ticket, Upload, FileText, X, IdCard, Lock, Users } from 'lucide-react';
 
 import {
   Form,
@@ -32,6 +32,9 @@ const EDUCATIONAL_STAGES = [
   'High School', 'University', 'Postgraduate', 'Working Professional', 'Other'
 ];
 
+const ACCEPTED_TYPES = '.pdf,.jpg,.jpeg,.png';
+const ACCEPTED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
 const formSchema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
   email: z.string().email('Valid email is required'),
@@ -55,8 +58,121 @@ const formSchema = z.object({
   path: ["educationalStageOther"],
 });
 
+// ── File Upload Zone Component ───────────────────────────────────────────────
+
+interface FileUploadZoneProps {
+  label: string;
+  hint: string;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+  icon?: React.ReactNode;
+}
+
+function FileUploadZone({ label, hint, file, onFileChange, icon }: FileUploadZoneProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped && ACCEPTED_MIME.includes(dropped.type)) {
+      onFileChange(dropped);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0] ?? null;
+    if (selected) onFileChange(selected);
+    // Reset so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleRemove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onFileChange(null);
+  };
+
+  const getFileIcon = (f: File) => {
+    if (f.type === 'application/pdf') return '📄';
+    return '🖼️';
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-foreground">{label}</p>
+      <div
+        onClick={() => !file && inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
+        className={`
+          relative rounded-xl border-2 border-dashed transition-all duration-200
+          ${file
+            ? 'border-primary/40 bg-primary/5 cursor-default'
+            : isDragging
+              ? 'border-primary bg-primary/10 scale-[1.01] cursor-copy'
+              : 'border-border/60 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+          }
+        `}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_TYPES}
+          onChange={handleFileInput}
+          className="hidden"
+        />
+
+        {file ? (
+          /* ── Selected state ── */
+          <div className="flex items-center gap-3 p-4">
+            <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center text-xl flex-shrink-0">
+              {getFileIcon(file)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {(file.size / 1024).toFixed(0)} KB
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleRemove}
+              className="w-7 h-7 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive flex items-center justify-center transition-colors flex-shrink-0"
+              aria-label="Remove file"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          /* ── Empty / drag state ── */
+          <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-1">
+              {icon ?? <Upload className="w-5 h-5 text-primary" />}
+            </div>
+            <p className="text-sm font-medium text-foreground">
+              Drag & drop or <span className="text-primary underline underline-offset-2">browse</span>
+            </p>
+            <p className="text-xs text-muted-foreground">{hint}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main Registration Page ───────────────────────────────────────────────────
+
 export default function RegistrationPage() {
   const [isSuccess, setIsSuccess] = useState(false);
+  const [nationalIdFile, setNationalIdFile] = useState<File | null>(null);
+  const [birthPaperFile, setBirthPaperFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const { data: regStatus, isLoading: statusLoading } = useRegistrationStatus({
+    query: { staleTime: 30_000, refetchInterval: 60_000 },
+  });
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -73,34 +189,79 @@ export default function RegistrationPage() {
     },
   });
 
-  const registerMutation = useRegisterAttendee();
-
+  const registerMutation = useRegisterAttendeeWithFiles();
   const watchEducationalStage = form.watch('educationalStageDropdown');
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
+    // Validate: at least one document must be uploaded
+    if (!nationalIdFile && !birthPaperFile) {
+      setFileError('Please upload at least one identity document (National ID or Birth Paper).');
+      // Scroll to the documents section
+      document.getElementById('identity-documents-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    setFileError(null);
+
     const finalEducationalStage = values.educationalStageDropdown === 'Other' 
       ? values.educationalStageOther || 'Other' 
       : values.educationalStageDropdown;
 
-    registerMutation.mutate({
-      data: {
-        fullName: values.fullName,
-        email: values.email,
-        mobileNumber: values.mobileNumber,
-        whatsappNumber: values.whatsappNumber,
-        gender: values.gender,
-        age: values.age,
-        governorate: values.governorate,
-        educationalStage: finalEducationalStage,
-        consentMediaUsage: true,
-      }
-    }, {
+    const formData = new FormData();
+    formData.append('fullName', values.fullName.trim());
+    formData.append('email', values.email.trim());
+    formData.append('mobileNumber', values.mobileNumber.trim());
+    formData.append('whatsappNumber', values.whatsappNumber.trim());
+    formData.append('gender', values.gender);
+    formData.append('age', String(values.age));
+    formData.append('governorate', values.governorate);
+    formData.append('educationalStage', finalEducationalStage);
+    formData.append('consentMediaUsage', 'true');
+    if (nationalIdFile) formData.append('nationalIdFile', nationalIdFile);
+    if (birthPaperFile) formData.append('birthPaperFile', birthPaperFile);
+
+    registerMutation.mutate({ formData }, {
       onSuccess: () => {
         setIsSuccess(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
   };
+
+  // ── Registration closed / loading screens ──
+  if (statusLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center p-4 relative z-10">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+          <p className="text-muted-foreground text-sm">Checking registration status…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (regStatus && !regStatus.open) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center p-4 py-20 relative z-10">
+        <Card className="glass-card max-w-lg w-full text-center overflow-hidden relative">
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-destructive to-red-400" />
+          <CardContent className="pt-12 pb-10 px-8 flex flex-col items-center">
+            <div className="w-20 h-20 bg-destructive/15 rounded-full flex items-center justify-center mb-6">
+              <Lock className="w-10 h-10 text-destructive" />
+            </div>
+            <h2 className="text-3xl font-heading text-gradient mb-4">Registration Closed</h2>
+            <p className="text-muted-foreground text-lg mb-4 leading-relaxed">
+              We've reached our maximum capacity of <strong className="text-foreground">{regStatus.limit}</strong> participants.
+              Registration is now closed.
+            </p>
+            <div className="flex items-center gap-2 bg-muted/30 border border-border rounded-lg px-5 py-3 text-sm text-muted-foreground">
+              <Users className="w-4 h-4 text-primary" />
+              <span><strong className="text-foreground">{regStatus.total}</strong> / {regStatus.limit} spots filled</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isSuccess) {
     return (
@@ -119,6 +280,9 @@ export default function RegistrationPage() {
               className="btn-secondary w-full"
               onClick={() => {
                 setIsSuccess(false);
+                setNationalIdFile(null);
+                setBirthPaperFile(null);
+                setFileError(null);
                 form.reset();
               }}
             >
@@ -141,6 +305,14 @@ export default function RegistrationPage() {
           <p className="text-lg md:text-xl text-foreground/80 max-w-2xl mx-auto mb-8 font-medium">
             Registration form for the first offline event organized by GRV in collaboration with Canadian International College (CIC).
           </p>
+
+          {/* ── Spots remaining pill ── */}
+          {regStatus && regStatus.open && (
+            <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 text-primary px-5 py-2 rounded-full text-sm font-semibold mb-6 animate-in fade-in duration-500">
+              <Users className="w-4 h-4" />
+              <span>{regStatus.remaining} spot{regStatus.remaining !== 1 ? 's' : ''} remaining out of {regStatus.limit}</span>
+            </div>
+          )}
           
           <div className="flex flex-wrap justify-center gap-4 text-sm font-medium mb-8">
             <div className="flex items-center gap-2 bg-card/50 border border-border px-4 py-2 rounded-full backdrop-blur-sm">
@@ -174,7 +346,7 @@ export default function RegistrationPage() {
                 <AlertCircle className="h-4 w-4" />
                 <AlertTitle>Registration Failed</AlertTitle>
                 <AlertDescription>
-                  {registerMutation.error?.data?.error || "A network or server error occurred. Please try again."}
+                  {(registerMutation.error as any)?.data?.error || "A network or server error occurred. Please try again."}
                 </AlertDescription>
               </Alert>
             )}
@@ -342,7 +514,51 @@ export default function RegistrationPage() {
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-border">
+                {/* ── Identity Documents Section ── */}
+                <div
+                  id="identity-documents-section"
+                  className="pt-6 border-t border-border space-y-5"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <IdCard className="w-4.5 h-4.5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Identity Documents</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Upload your <strong>National ID</strong> or <strong>Birth Certificate</strong> (or both).
+                        Accepted formats: PDF, JPG, PNG — max 10 MB each.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FileUploadZone
+                      label="National ID / Driver's License"
+                      hint="PDF, JPG or PNG · max 10 MB"
+                      file={nationalIdFile}
+                      onFileChange={(f) => { setNationalIdFile(f); if (f) setFileError(null); }}
+                      icon={<IdCard className="w-5 h-5 text-primary" />}
+                    />
+                    <FileUploadZone
+                      label="Birth Certificate"
+                      hint="PDF, JPG or PNG · max 10 MB"
+                      file={birthPaperFile}
+                      onFileChange={(f) => { setBirthPaperFile(f); if (f) setFileError(null); }}
+                      icon={<FileText className="w-5 h-5 text-primary" />}
+                    />
+                  </div>
+
+                  {fileError && (
+                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{fileError}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Media Consent ── */}
+                <div className="pt-2 border-t border-border">
                   <FormField
                     control={form.control}
                     name="consentMediaUsage"

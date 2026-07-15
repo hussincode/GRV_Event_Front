@@ -870,3 +870,173 @@ export function useLookupTicket<TData = Awaited<ReturnType<typeof lookupTicket>>
 
 
 
+// ---------------------------------------------------------------------------
+// Multipart/form-data registration (with file uploads)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/register with multipart/form-data (supports National ID / Birth Paper uploads).
+ * The caller is responsible for building the FormData object.
+ */
+export const registerAttendeeWithFiles = async (
+  formData: FormData,
+  options?: RequestInit,
+): Promise<import('./api.schemas').Registration> => {
+  // We deliberately do NOT set Content-Type here — the browser sets it
+  // automatically with the correct multipart boundary when body is FormData.
+  return customFetch<import('./api.schemas').Registration>(`/api/register`, {
+    ...options,
+    method: 'POST',
+    body: formData,
+  });
+};
+
+export type RegisterAttendeeWithFilesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof registerAttendeeWithFiles>>
+>;
+export type RegisterAttendeeWithFilesMutationError = ErrorType<import('./api.schemas').ErrorResponse>;
+
+export function useRegisterAttendeeWithFiles<
+  TError = ErrorType<import('./api.schemas').ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerAttendeeWithFiles>>,
+    TError,
+    { formData: FormData },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof registerAttendeeWithFiles>>,
+  TError,
+  { formData: FormData },
+  TContext
+> {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof registerAttendeeWithFiles>>,
+    { formData: FormData }
+  > = ({ formData }) => registerAttendeeWithFiles(formData, requestOptions);
+
+  return useMutation<
+    Awaited<ReturnType<typeof registerAttendeeWithFiles>>,
+    TError,
+    { formData: FormData },
+    TContext
+  >({ mutationFn, ...mutationOptions });
+}
+
+// ---------------------------------------------------------------------------
+// Admin – Update Registration
+// ---------------------------------------------------------------------------
+
+/**
+ * PUT /api/admin/registrations/:rowId
+ * Allows the admin to edit any user field and change status (no emails sent).
+ */
+export const updateRegistration = async (
+  rowId: number,
+  data: import('./api.schemas').UpdateRegistrationInput,
+  options?: RequestInit,
+): Promise<import('./api.schemas').Registration> => {
+  return customFetch<import('./api.schemas').Registration>(
+    `/api/admin/registrations/${rowId}`,
+    {
+      ...options,
+      method: 'PUT',
+      body: JSON.stringify(data),
+      headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) },
+    },
+  );
+};
+
+export type UpdateRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateRegistration>>
+>;
+export type UpdateRegistrationMutationError = ErrorType<import('./api.schemas').ErrorResponse>;
+
+export function useUpdateRegistration<
+  TError = ErrorType<import('./api.schemas').ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateRegistration>>,
+    TError,
+    { rowId: number; data: import('./api.schemas').UpdateRegistrationInput },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateRegistration>>,
+  TError,
+  { rowId: number; data: import('./api.schemas').UpdateRegistrationInput },
+  TContext
+> {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateRegistration>>,
+    { rowId: number; data: import('./api.schemas').UpdateRegistrationInput }
+  > = ({ rowId, data }) => updateRegistration(rowId, data, requestOptions);
+
+  return useMutation<
+    Awaited<ReturnType<typeof updateRegistration>>,
+    TError,
+    { rowId: number; data: import('./api.schemas').UpdateRegistrationInput },
+    TContext
+  >({ mutationFn, ...mutationOptions });
+}
+
+// ---------------------------------------------------------------------------
+// Public – Registration Status (open/closed + spot count)
+// ---------------------------------------------------------------------------
+
+export interface RegistrationStatusResponse {
+  open: boolean;
+  total: number;
+  limit: number;
+  remaining: number;
+}
+
+export const getRegistrationStatusUrl = () => `/api/registration-status`;
+
+export const getRegistrationStatus = async (options?: RequestInit): Promise<RegistrationStatusResponse> => {
+  return customFetch<RegistrationStatusResponse>(getRegistrationStatusUrl(), {
+    ...options,
+    method: 'GET',
+  });
+};
+
+export const getRegistrationStatusQueryKey = () => [`/api/registration-status`] as const;
+
+export const getRegistrationStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getRegistrationStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getRegistrationStatus>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getRegistrationStatusQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getRegistrationStatus>>> = ({ signal }) =>
+    getRegistrationStatus({ signal, ...requestOptions });
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getRegistrationStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useRegistrationStatus<
+  TData = Awaited<ReturnType<typeof getRegistrationStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof getRegistrationStatus>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getRegistrationStatusQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return withQueryKey(query, queryOptions.queryKey);
+}

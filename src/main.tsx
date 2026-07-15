@@ -4,4 +4,10 @@ import App from './App';
 
 import './index.css';
 
+import { setBaseUrl } from './lib/api-client-react';
+
+if (import.meta.env.VITE_API_URL) {
+  setBaseUrl(import.meta.env.VITE_API_URL);
+}
+
 createRoot(document.getElementById('root')!).render(<App />);

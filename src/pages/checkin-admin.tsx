@@ -248,6 +248,7 @@ export default function CheckinAdminPage() {
   const [search, setSearch] = useState(() => window.location.search);
 
   // Keep in sync if the ticket param changes via history navigation.
+  
   useEffect(() => {
     setSearch(window.location.search);
   }, [window.location.href]);

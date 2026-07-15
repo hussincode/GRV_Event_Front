@@ -361,7 +361,7 @@ export async function customFetch<T = unknown>(
   const requestInfo = { method, url: resolveUrl(input) };
 
   const response = await fetch(input, {
-    credentials: init.credentials ?? (_baseUrl ? "include" : undefined),
+    credentials: init.credentials ?? "include",
     ...init,
     method,
     headers,

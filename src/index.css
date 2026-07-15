@@ -148,3 +148,23 @@
     @apply inline-block border border-primary/30 bg-primary/10 rounded-full px-3 py-1 text-primary uppercase text-xs font-bold tracking-wider;
   }
 }
+
+/* Scan-line animation for QR scanner modal */
+@keyframes scan {
+  0%   { top: 8%; }
+  50%  { top: 88%; }
+  100% { top: 8%; }
+}
+
+/* Remove the default html5-qrcode injected UI chrome (border box, shaded regions) */
+#grv-checkin-scanner-region > img,
+#grv-checkin-scanner-region > div[style*="border"] {
+  display: none !important;
+}
+#grv-checkin-scanner-region video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  border-radius: 0;
+}
+

@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRegisterAttendeeWithFiles, useRegistrationStatus } from '@/lib/api-client-react';
-import { Check, AlertCircle, Calendar, MapPin, Ticket, Upload, FileText, X, IdCard, Lock, Users } from 'lucide-react';
+import { Check, AlertCircle, Calendar, MapPin, Ticket, IdCard, Lock, Users } from 'lucide-react';
 
 import {
   Form,
@@ -31,9 +31,6 @@ const GOVERNORATES = [
 const EDUCATIONAL_STAGES = [
   'High School', 'University', 'Postgraduate', 'Working Professional', 'Other'
 ];
-
-const ACCEPTED_TYPES = '.pdf,.jpg,.jpeg,.png';
-const ACCEPTED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
 
 const formSchema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
@@ -67,110 +64,6 @@ const formSchema = z.object({
   message: "Please provide at least one document URL",
   path: ["nationalIdUrl"],
 });
-
-// ── File Upload Zone Component ───────────────────────────────────────────────
-
-interface FileUploadZoneProps {
-  label: string;
-  hint: string;
-  file: File | null;
-  onFileChange: (file: File | null) => void;
-  icon?: React.ReactNode;
-}
-
-function FileUploadZone({ label, hint, file, onFileChange, icon }: FileUploadZoneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped && ACCEPTED_MIME.includes(dropped.type)) {
-      onFileChange(dropped);
-    }
-  };
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
-    if (selected) onFileChange(selected);
-    // Reset so same file can be re-selected
-    e.target.value = '';
-  };
-
-  const handleRemove = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onFileChange(null);
-  };
-
-  const getFileIcon = (f: File) => {
-    if (f.type === 'application/pdf') return '📄';
-    return '🖼️';
-  };
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-medium text-foreground">{label}</p>
-      <div
-        onClick={() => !file && inputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        className={`
-          relative rounded-xl border-2 border-dashed transition-all duration-200
-          ${file
-            ? 'border-primary/40 bg-primary/5 cursor-default'
-            : isDragging
-              ? 'border-primary bg-primary/10 scale-[1.01] cursor-copy'
-              : 'border-border/60 bg-muted/20 hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
-          }
-        `}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={ACCEPTED_TYPES}
-          onChange={handleFileInput}
-          className="hidden"
-        />
-
-        {file ? (
-          /* ── Selected state ── */
-          <div className="flex items-center gap-3 p-4">
-            <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center text-xl flex-shrink-0">
-              {getFileIcon(file)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {(file.size / 1024).toFixed(0)} KB
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleRemove}
-              className="w-7 h-7 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive flex items-center justify-center transition-colors flex-shrink-0"
-              aria-label="Remove file"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          /* ── Empty / drag state ── */
-          <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center mb-1">
-              {icon ?? <Upload className="w-5 h-5 text-primary" />}
-            </div>
-            <p className="text-sm font-medium text-foreground">
-              Drag & drop or <span className="text-primary underline underline-offset-2">browse</span>
-            </p>
-            <p className="text-xs text-muted-foreground">{hint}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ── Main Registration Page ───────────────────────────────────────────────────
 
@@ -280,9 +173,6 @@ export default function RegistrationPage() {
               className="btn-secondary w-full"
               onClick={() => {
                 setIsSuccess(false);
-                setNationalIdFile(null);
-                setBirthPaperFile(null);
-                setFileError(null);
                 form.reset();
               }}
             >

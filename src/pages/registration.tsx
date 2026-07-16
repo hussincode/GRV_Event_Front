@@ -45,6 +45,8 @@ const formSchema = z.object({
   governorate: z.string().min(1, 'Please select a governorate'),
   educationalStageDropdown: z.string().min(1, 'Please select your educational stage'),
   educationalStageOther: z.string().optional(),
+  nationalIdUrl: z.string().url('Please enter a valid URL for National ID').optional().or(z.literal('')),
+  birthCertificateUrl: z.string().url('Please enter a valid URL for Birth Certificate').optional().or(z.literal('')),
   consentMediaUsage: z.literal(true, {
     errorMap: () => ({ message: 'You must agree to the media usage terms' })
   }),
@@ -56,6 +58,14 @@ const formSchema = z.object({
 }, {
   message: "Please specify your educational stage",
   path: ["educationalStageOther"],
+}).refine(data => {
+  if (!data.nationalIdUrl && !data.birthCertificateUrl) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Please provide at least one document URL",
+  path: ["nationalIdUrl"],
 });
 
 // ── File Upload Zone Component ───────────────────────────────────────────────
@@ -166,9 +176,6 @@ function FileUploadZone({ label, hint, file, onFileChange, icon }: FileUploadZon
 
 export default function RegistrationPage() {
   const [isSuccess, setIsSuccess] = useState(false);
-  const [nationalIdFile, setNationalIdFile] = useState<File | null>(null);
-  const [birthPaperFile, setBirthPaperFile] = useState<File | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
 
   const { data: regStatus, isLoading: statusLoading } = useRegistrationStatus({
     query: { staleTime: 30_000, refetchInterval: 60_000 },
@@ -186,6 +193,8 @@ export default function RegistrationPage() {
       governorate: '',
       educationalStageDropdown: '',
       educationalStageOther: '',
+      nationalIdUrl: '',
+      birthCertificateUrl: '',
     },
   });
 
@@ -193,15 +202,6 @@ export default function RegistrationPage() {
   const watchEducationalStage = form.watch('educationalStageDropdown');
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
-    // Validate: at least one document must be uploaded
-    if (!nationalIdFile && !birthPaperFile) {
-      setFileError('Please upload at least one identity document (National ID or Birth Paper).');
-      // Scroll to the documents section
-      document.getElementById('identity-documents-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    setFileError(null);
-
     const finalEducationalStage = values.educationalStageDropdown === 'Other' 
       ? values.educationalStageOther || 'Other' 
       : values.educationalStageDropdown;
@@ -216,8 +216,8 @@ export default function RegistrationPage() {
     formData.append('governorate', values.governorate);
     formData.append('educationalStage', finalEducationalStage);
     formData.append('consentMediaUsage', 'true');
-    if (nationalIdFile) formData.append('nationalIdFile', nationalIdFile);
-    if (birthPaperFile) formData.append('birthPaperFile', birthPaperFile);
+    formData.append('nationalIdFileUrl', values.nationalIdUrl || '');
+    formData.append('birthPaperFileUrl', values.birthCertificateUrl || '');
 
     registerMutation.mutate({ formData }, {
       onSuccess: () => {
@@ -526,35 +526,53 @@ export default function RegistrationPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Identity Documents</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Upload your <strong>National ID</strong> or <strong>Birth Certificate</strong> (or both).
-                        Accepted formats: PDF, JPG, PNG — max 10 MB each.
+                        Provide URLs to your <strong>National ID</strong> or <strong>Birth Certificate</strong> documents (or both).
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FileUploadZone
-                      label="National ID / Driver's License"
-                      hint="PDF, JPG or PNG · max 10 MB"
-                      file={nationalIdFile}
-                      onFileChange={(f) => { setNationalIdFile(f); if (f) setFileError(null); }}
-                      icon={<IdCard className="w-5 h-5 text-primary" />}
+                    <FormField
+                      control={form.control}
+                      name="nationalIdUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>National ID / Driver's License URL</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="https://example.com/my-id.jpg" 
+                              className="bg-input/50" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Paste the URL to your National ID or Driver's License document
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                    <FileUploadZone
-                      label="Birth Certificate"
-                      hint="PDF, JPG or PNG · max 10 MB"
-                      file={birthPaperFile}
-                      onFileChange={(f) => { setBirthPaperFile(f); if (f) setFileError(null); }}
-                      icon={<FileText className="w-5 h-5 text-primary" />}
+                    <FormField
+                      control={form.control}
+                      name="birthCertificateUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Birth Certificate URL</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="https://example.com/birth-cert.jpg" 
+                              className="bg-input/50" 
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Paste the URL to your Birth Certificate document
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                   </div>
-
-                  {fileError && (
-                    <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-3 animate-in fade-in slide-in-from-top-1 duration-200">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      <span>{fileError}</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* ── Media Consent ── */}

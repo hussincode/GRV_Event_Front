@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, useSearch } from 'wouter';
 import {
   useGetAdminSession,
   useLookupTicket,
@@ -244,16 +244,10 @@ function TicketCheckinView({ ticketId }: { ticketId: string }) {
 
 export default function CheckinAdminPage() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { data: session, isLoading: sessionLoading, isError: sessionError } = useGetAdminSession();
-  const [search, setSearch] = useState(() => window.location.search);
 
-  // Keep in sync if the ticket param changes via history navigation.
-  
-  useEffect(() => {
-    setSearch(window.location.search);
-  }, [window.location.href]);
-
-  const ticketId = getTicketFromSearch(search);
+  const ticketId = getTicketFromSearch('?' + search);
 
   useEffect(() => {
     if (sessionLoading) return;

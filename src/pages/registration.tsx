@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useRegisterAttendeeWithFiles, useRegistrationStatus } from '@/lib/api-client-react';
+import { useRegisterAttendee, useRegistrationStatus } from '@/lib/api-client-react';
 import { Check, AlertCircle, Calendar, MapPin, Ticket, IdCard, Lock, Users } from 'lucide-react';
 
 import {
@@ -91,7 +91,7 @@ export default function RegistrationPage() {
     },
   });
 
-  const registerMutation = useRegisterAttendeeWithFiles();
+  const registerMutation = useRegisterAttendee();
   const watchEducationalStage = form.watch('educationalStageDropdown');
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
@@ -99,20 +99,24 @@ export default function RegistrationPage() {
       ? values.educationalStageOther || 'Other' 
       : values.educationalStageDropdown;
 
-    const formData = new FormData();
-    formData.append('fullName', values.fullName.trim());
-    formData.append('email', values.email.trim());
-    formData.append('mobileNumber', values.mobileNumber.trim());
-    formData.append('whatsappNumber', values.whatsappNumber.trim());
-    formData.append('gender', values.gender);
-    formData.append('age', String(values.age));
-    formData.append('governorate', values.governorate);
-    formData.append('educationalStage', finalEducationalStage);
-    formData.append('consentMediaUsage', 'true');
-    formData.append('nationalIdFileUrl', values.nationalIdUrl || '');
-    formData.append('birthPaperFileUrl', values.birthCertificateUrl || '');
-
-    registerMutation.mutate({ formData }, {
+    registerMutation.mutate({
+      data: {
+        fullName: values.fullName.trim(),
+        email: values.email.trim(),
+        mobileNumber: values.mobileNumber.trim(),
+        whatsappNumber: values.whatsappNumber.trim(),
+        gender: values.gender,
+        age: values.age,
+        governorate: values.governorate,
+        educationalStage: finalEducationalStage,
+        consentMediaUsage: true,
+        // Extra fields the backend validates (not in the generated schema type)
+        ...({
+          nationalIdFileUrl: values.nationalIdUrl?.trim() || '',
+          birthPaperFileUrl: values.birthCertificateUrl?.trim() || '',
+        } as object),
+      } as Parameters<typeof registerMutation.mutate>[0]['data']
+    }, {
       onSuccess: () => {
         setIsSuccess(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });

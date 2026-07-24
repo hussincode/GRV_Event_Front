@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { useRegisterAttendee, useRegistrationStatus } from '@/lib/api-client-react';
-import { Check, AlertCircle, Calendar, MapPin, Ticket, IdCard, Lock, Users } from 'lucide-react';
+import { useRegisterAttendeeWithFiles, useRegistrationStatus } from '@/lib/api-client-react';
+import { Check, AlertCircle, Calendar, MapPin, Ticket, IdCard, Lock, Users, UploadCloud, FileText, Image as ImageIcon, X, CheckCircle2 } from 'lucide-react';
 
 import {
   Form,
@@ -21,16 +21,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-const GOVERNORATES = [
-  'Cairo', 'Alexandria', 'Giza', 'Qalyubia', 'Port Said', 'Suez', 'Dakahlia', 'Sharqia',
-  'Gharbia', 'Monufia', 'Beheira', 'Ismailia', 'Faiyum', 'Beni Suef', 'Minya', 'Asyut',
-  'Sohag', 'Qena', 'Aswan', 'Luxor', 'Red Sea', 'New Valley', 'Matrouh', 'North Sinai',
-  'South Sinai', 'Kafr El Sheikh', 'Damietta'
-];
-
 const EDUCATIONAL_STAGES = [
   'High School', 'University', 'Postgraduate', 'Working Professional', 'Other'
 ];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const ACCEPTED_FILE_TYPES = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
 
 const formSchema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
@@ -39,11 +35,10 @@ const formSchema = z.object({
   whatsappNumber: z.string().min(10, 'Valid WhatsApp number is required'),
   gender: z.enum(['Male', 'Female']),
   age: z.coerce.number().min(1).max(120),
-  governorate: z.string().min(1, 'Please select a governorate'),
   educationalStageDropdown: z.string().min(1, 'Please select your educational stage'),
   educationalStageOther: z.string().optional(),
-  nationalIdUrl: z.string().url('Please enter a valid URL for National ID').optional().or(z.literal('')),
-  birthCertificateUrl: z.string().url('Please enter a valid URL for Birth Certificate').optional().or(z.literal('')),
+  nationalIdFile: z.instanceof(File).optional().nullable(),
+  birthCertificateFile: z.instanceof(File).optional().nullable(),
   consentMediaUsage: z.literal(true, {
     errorMap: () => ({ message: 'You must agree to the media usage terms' })
   }),
@@ -56,55 +51,30 @@ const formSchema = z.object({
   message: "Please specify your educational stage",
   path: ["educationalStageOther"],
 }).refine(data => {
-  if (!data.nationalIdUrl && !data.birthCertificateUrl) {
+  if (!data.nationalIdFile && !data.birthCertificateFile) {
     return false;
   }
   return true;
 }, {
-  message: "Please provide at least one document URL",
-  path: ["nationalIdUrl"],
+  message: "Please upload at least one document (National ID or Birth Certificate)",
+  path: ["nationalIdFile"],
 });
 
-function Footer() {
-  return (
-    <footer className="w-full mt-12 pt-8 border-t border-border/40 text-center text-muted-foreground text-sm max-w-3xl">
-      <p className="mb-3 font-semibold text-foreground">
-        Need help? Contact us
-      </p>
-      <div className="flex flex-wrap justify-center gap-6">
-        <a
-          href="https://wa.me/201099951278"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 text-[#25D366] hover:opacity-80 transition-opacity font-semibold"
-        >
-          <svg className="w-5 h-5 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-          +201099951278
-        </a>
-        <a
-          href="mailto:grvteam20@gmail.com"
-          className="inline-flex items-center gap-2 text-primary hover:opacity-80 transition-opacity font-semibold"
-        >
-          <svg className="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="4" width="20" height="16" rx="2"/>
-            <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
-          </svg>
-          grvteam20@gmail.com
-        </a>
-      </div>
-      <p className="mt-6 text-xs text-muted-foreground/60">
-        © 2026 GRV × CIC. All rights reserved.
-      </p>
-    </footer>
-  );
+// Helper to format file size
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // ── Main Registration Page ───────────────────────────────────────────────────
 
 export default function RegistrationPage() {
   const [isSuccess, setIsSuccess] = useState(false);
+  const nationalIdInputRef = useRef<HTMLInputElement>(null);
+  const birthCertInputRef = useRef<HTMLInputElement>(null);
 
   const { data: regStatus, isLoading: statusLoading } = useRegistrationStatus({
     query: { staleTime: 30_000, refetchInterval: 60_000 },
@@ -119,15 +89,14 @@ export default function RegistrationPage() {
       whatsappNumber: '',
       gender: undefined as unknown as 'Male' | 'Female',
       age: undefined as unknown as number,
-      governorate: '',
       educationalStageDropdown: '',
       educationalStageOther: '',
-      nationalIdUrl: '',
-      birthCertificateUrl: '',
+      nationalIdFile: null,
+      birthCertificateFile: null,
     },
   });
 
-  const registerMutation = useRegisterAttendee();
+  const registerMutation = useRegisterAttendeeWithFiles();
   const watchEducationalStage = form.watch('educationalStageDropdown');
 
   const onSubmit = (values: z.infer<typeof formSchema>) => {
@@ -135,24 +104,25 @@ export default function RegistrationPage() {
       ? values.educationalStageOther || 'Other'
       : values.educationalStageDropdown;
 
-    registerMutation.mutate({
-      data: {
-        fullName: values.fullName.trim(),
-        email: values.email.trim(),
-        mobileNumber: values.mobileNumber.trim(),
-        whatsappNumber: values.whatsappNumber.trim(),
-        gender: values.gender,
-        age: values.age,
-        governorate: values.governorate,
-        educationalStage: finalEducationalStage,
-        consentMediaUsage: true,
-        // Extra fields the backend validates (not in the generated schema type)
-        ...({
-          nationalIdFileUrl: values.nationalIdUrl?.trim() || '',
-          birthPaperFileUrl: values.birthCertificateUrl?.trim() || '',
-        } as object),
-      } as Parameters<typeof registerMutation.mutate>[0]['data']
-    }, {
+    const formData = new FormData();
+    formData.append('fullName', values.fullName.trim());
+    formData.append('email', values.email.trim());
+    formData.append('mobileNumber', values.mobileNumber.trim());
+    formData.append('whatsappNumber', values.whatsappNumber.trim());
+    formData.append('gender', values.gender);
+    formData.append('age', String(values.age));
+    formData.append('governorate', '');
+    formData.append('educationalStage', finalEducationalStage);
+    formData.append('consentMediaUsage', 'true');
+
+    if (values.nationalIdFile) {
+      formData.append('nationalIdFile', values.nationalIdFile);
+    }
+    if (values.birthCertificateFile) {
+      formData.append('birthCertificateFile', values.birthCertificateFile);
+    }
+
+    registerMutation.mutate({ formData }, {
       onSuccess: () => {
         setIsSuccess(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -174,7 +144,7 @@ export default function RegistrationPage() {
 
   if (regStatus && !regStatus.open) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 py-20 relative z-10">
+      <div className="min-h-screen w-full flex items-center justify-center p-4 py-20 relative z-10">
         <Card className="glass-card max-w-lg w-full text-center overflow-hidden relative">
           <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-destructive to-red-400" />
           <CardContent className="pt-12 pb-10 px-8 flex flex-col items-center">
@@ -192,14 +162,13 @@ export default function RegistrationPage() {
             </div>
           </CardContent>
         </Card>
-        <Footer />
       </div>
     );
   }
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 py-20 relative z-10">
+      <div className="min-h-screen w-full flex items-center justify-center p-4 py-20 relative z-10">
         <Card className="glass-card max-w-lg w-full text-center overflow-hidden relative">
           <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-primary to-brand-soft" />
           <CardContent className="pt-12 pb-10 px-8 flex flex-col items-center">
@@ -221,7 +190,6 @@ export default function RegistrationPage() {
             </Button>
           </CardContent>
         </Card>
-        <Footer />
       </div>
     );
   }
@@ -381,29 +349,6 @@ export default function RegistrationPage() {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="governorate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Governorate</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="bg-input/50">
-                              <SelectValue placeholder="Select governorate" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {GOVERNORATES.map(gov => (
-                              <SelectItem key={gov} value={gov}>{gov}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
                   <div className="space-y-6">
                     <FormField
                       control={form.control}
@@ -458,48 +403,159 @@ export default function RegistrationPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-foreground">Identity Documents</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Provide URLs to your <strong>National ID</strong> or <strong>Birth Certificate</strong> documents (or both).
+                        Upload an image (JPG, PNG) or PDF document for your <strong>National ID</strong> or <strong>Birth Certificate</strong> (at least one is required).
                       </p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* National ID Upload */}
                     <FormField
                       control={form.control}
-                      name="nationalIdUrl"
+                      name="nationalIdFile"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>National ID</FormLabel>
+                          <FormLabel>National ID (PDF or Image)</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="https://example.com/my-id.jpg"
-                              className="bg-input/50"
-                              {...field}
-                            />
+                            <div>
+                              <input
+                                ref={nationalIdInputRef}
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    if (file.size > MAX_FILE_SIZE) {
+                                      form.setError('nationalIdFile', { message: 'File size must be less than 10MB' });
+                                      return;
+                                    }
+                                    if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
+                                      form.setError('nationalIdFile', { message: 'Only PDF, JPG, or PNG files are allowed' });
+                                      return;
+                                    }
+                                    field.onChange(file);
+                                    form.clearErrors('nationalIdFile');
+                                  }
+                                }}
+                              />
+                              {field.value ? (
+                                <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
+                                      {field.value.type.includes('pdf') ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
+                                    </div>
+                                    <div className="truncate">
+                                      <p className="text-xs font-semibold text-foreground truncate">{field.value.name}</p>
+                                      <p className="text-[11px] text-muted-foreground">{formatFileSize(field.value.size)}</p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg flex-shrink-0"
+                                    onClick={() => {
+                                      field.onChange(null);
+                                      if (nationalIdInputRef.current) nationalIdInputRef.current.value = '';
+                                    }}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => nationalIdInputRef.current?.click()}
+                                  className="w-full h-32 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-input/20 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 p-4 text-center group cursor-pointer"
+                                >
+                                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                    <UploadCloud className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground">Click to upload National ID</p>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">PDF, JPG, PNG (Max 10MB)</p>
+                                  </div>
+                                </button>
+                              )}
+                            </div>
                           </FormControl>
-                          <FormDescription className="text-xs">
-                            Please upload your National ID to Google Drive, make sure the sharing permission is set to <strong>"Anyone with the link can view"</strong>, then paste the shared link here.
-                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {/* Birth Certificate Upload */}
                     <FormField
                       control={form.control}
-                      name="birthCertificateUrl"
+                      name="birthCertificateFile"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Birth Certificate URL</FormLabel>
+                          <FormLabel>Birth Certificate (PDF or Image)</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="https://example.com/birth-cert.jpg"
-                              className="bg-input/50"
-                              {...field}
-                            />
+                            <div>
+                              <input
+                                ref={birthCertInputRef}
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,application/pdf"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    if (file.size > MAX_FILE_SIZE) {
+                                      form.setError('birthCertificateFile', { message: 'File size must be less than 10MB' });
+                                      return;
+                                    }
+                                    if (!ACCEPTED_FILE_TYPES.includes(file.type)) {
+                                      form.setError('birthCertificateFile', { message: 'Only PDF, JPG, or PNG files are allowed' });
+                                      return;
+                                    }
+                                    field.onChange(file);
+                                    form.clearErrors('birthCertificateFile');
+                                  }
+                                }}
+                              />
+                              {field.value ? (
+                                <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 text-primary">
+                                      {field.value.type.includes('pdf') ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
+                                    </div>
+                                    <div className="truncate">
+                                      <p className="text-xs font-semibold text-foreground truncate">{field.value.name}</p>
+                                      <p className="text-[11px] text-muted-foreground">{formatFileSize(field.value.size)}</p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg flex-shrink-0"
+                                    onClick={() => {
+                                      field.onChange(null);
+                                      if (birthCertInputRef.current) birthCertInputRef.current.value = '';
+                                    }}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => birthCertInputRef.current?.click()}
+                                  className="w-full h-32 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-input/20 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-2 p-4 text-center group cursor-pointer"
+                                >
+                                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                    <UploadCloud className="w-5 h-5" />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground">Click to upload Birth Certificate</p>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">PDF, JPG, PNG (Max 10MB)</p>
+                                  </div>
+                                </button>
+                              )}
+                            </div>
                           </FormControl>
-                          <FormDescription className="text-xs">
-                            Please upload your Birth Certificate to Google Drive, make sure the sharing permission is set to <strong>"Anyone with the link can view"</strong>, then paste the shared link here.
-                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -550,7 +606,6 @@ export default function RegistrationPage() {
             </Form>
           </CardContent>
         </Card>
-        <Footer />
       </div>
     </div>
   );

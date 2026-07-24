@@ -59,7 +59,6 @@ export interface UpdateRegistrationInput {
   whatsappNumber: string;
   gender: Gender;
   age: number;
-  governorate: string;
   educationalStage: string;
   status: RegistrationStatus;
 }

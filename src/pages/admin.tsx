@@ -65,13 +65,6 @@ import { useToast } from '@/hooks/use-toast';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const GOVERNORATES = [
-  'Cairo', 'Alexandria', 'Giza', 'Qalyubia', 'Port Said', 'Suez', 'Dakahlia', 'Sharqia',
-  'Gharbia', 'Monufia', 'Beheira', 'Ismailia', 'Faiyum', 'Beni Suef', 'Minya', 'Asyut',
-  'Sohag', 'Qena', 'Aswan', 'Luxor', 'Red Sea', 'New Valley', 'Matrouh', 'North Sinai',
-  'South Sinai', 'Kafr El Sheikh', 'Damietta',
-];
-
 const EDUCATIONAL_STAGES = [
   'High School', 'University', 'Postgraduate', 'Working Professional', 'Other',
 ];
@@ -92,7 +85,6 @@ const editSchema = z.object({
   whatsappNumber: z.string().min(8, 'Valid WhatsApp number is required'),
   gender: z.enum(['Male', 'Female']),
   age: z.coerce.number().min(5).max(120),
-  governorate: z.string().min(1, 'Please select a governorate'),
   educationalStage: z.string().min(1, 'Please select an educational stage'),
   status: z.enum(['Pending', 'Approved', 'Rejected']),
 });
@@ -209,7 +201,6 @@ function EditRegistrationDialog({ registration, onClose, onSaved }: EditDialogPr
           whatsappNumber: registration.whatsappNumber,
           gender: registration.gender as 'Male' | 'Female',
           age: registration.age,
-          governorate: registration.governorate,
           educationalStage: registration.educationalStage,
           status: registration.status as 'Pending' | 'Approved' | 'Rejected',
         }
@@ -226,7 +217,6 @@ function EditRegistrationDialog({ registration, onClose, onSaved }: EditDialogPr
         whatsappNumber: registration.whatsappNumber,
         gender: registration.gender as 'Male' | 'Female',
         age: registration.age,
-        governorate: registration.governorate,
         educationalStage: registration.educationalStage,
         status: registration.status as 'Pending' | 'Approved' | 'Rejected',
       });
@@ -385,27 +375,7 @@ function EditRegistrationDialog({ registration, onClose, onSaved }: EditDialogPr
                 </div>
 
                 {/* Row 4 */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="governorate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Governorate</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="bg-input/50"><SelectValue /></SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {GOVERNORATES.map(g => (
-                              <SelectItem key={g} value={g}>{g}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <div>
                   <FormField
                     control={form.control}
                     name="educationalStage"
@@ -781,7 +751,7 @@ function DashboardContent() {
                     </TableCell>
                     <TableCell className="align-top py-4">
                       <p className="text-sm">{row.age}y, {row.gender}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{row.governorate}</p>
+                      {row.governorate && <p className="text-xs text-muted-foreground mt-1">{row.governorate}</p>}
                       <p className="text-xs text-muted-foreground mt-1 truncate max-w-[150px]" title={row.educationalStage}>
                         {row.educationalStage}
                       </p>
@@ -882,10 +852,12 @@ function DashboardContent() {
                         <p className="text-sm font-medium">{selectedRow.gender}</p>
                       </div>
                     </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground mb-1">Location</p>
-                      <p className="text-sm font-medium">{selectedRow.governorate}</p>
-                    </div>
+                    {selectedRow.governorate && (
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-1">Location</p>
+                        <p className="text-sm font-medium">{selectedRow.governorate}</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Education</p>
                       <p className="text-sm font-medium">{selectedRow.educationalStage}</p>
